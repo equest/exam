@@ -1,0 +1,18 @@
+{{- $package := toLower .Table.Name}}
+{{- $type := title .Table.Name}}
+package {{$package}}  
+
+import(
+    "database/sql"
+    "time"
+
+    "github.com/lib/pq"
+) 
+
+// {{$type}} ,{{.Table.Comment}}
+type {{$type}} struct {  
+{{- range .Table.Columns }}   
+    // {{title .Name}} ,{{.Comment}}     
+    {{title .Name}} {{if and (eq .Type "string") .IsArray}}pq.StringArray{{else}}{{.Type}}{{end}}
+{{- end}}
+}

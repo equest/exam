@@ -1,0 +1,599 @@
+
+{{- $package := toLower .Table.Name}}
+{{- $model := title .Table.Name}}
+{{- $storage := title (print "Storage")}}
+{{- $param := toLower $model}} 
+
+package {{$package}}   
+import (
+    "context"
+    "{{.Params.repository}}/internal/data"
+)
+
+// {{$storage}} ,{{.Table.Comment}}
+type {{$storage}} struct { 
+   q data.Queryable
+}
+
+//rowScanner represent rows object from sql
+type rowScanner interface {
+	Scan(dest ...interface{}) error
+}
+
+// NewStorage , Create new Storage.
+func NewStorage(q data.Queryable) *{{$storage}}{ 
+    return &{{$storage}}{ 
+        q: q,
+    }
+}
+ 
+{{template "func_single" .}} 
+{{template "func_first" .}} 
+{{template "func_first_order" .}} 
+{{template "func_where" .}} 
+{{template "func_where_order" .}} 
+{{template "func_where_no_filter" .}} 
+{{template "func_find_all" .}} 
+
+{{- if .Table.HasPrimaryKey}} 
+{{template "func_find_by_keys" .}} 
+{{template "func_find_by_keys_no_filter" .}}
+{{template "func_create" .}}
+{{template "func_update" .}}
+{{template "func_delete" .}}
+{{template "func_save" .}} 
+{{- end}}
+
+{{- /* Single function */ -}}
+{{- define "func_single"}}
+{{- $model := title .Table.Name}}
+{{- $storage := title (print "Storage")}}  
+// Single , find one {{$model}} record matching with condition specified by query and args.
+func (s *{{$storage}}) Single(ctx context.Context, query string, args ...interface{}) (*{{$model}}, error) {    
+    q, ok := data.QueryableFromContext(ctx)
+    if !ok {
+        q = s.q  
+    }
+    stmt := fmt.Sprintf(`%s WHERE %s`, selectQuery(), query) 
+    rows, err := q.Query(stmt, args...) 
+            
+    if err != nil {
+        return nil, err
+    }
+    
+    count := 0 
+    {{- $variable := print "r"}}
+    var {{$variable}} *{{$model}}
+    for rows.Next() { 
+        if count > 1 {
+            return nil, errors.New("found more than one record")
+        }  
+        {{$variable}} = &{{$model}}{} 
+        err := scan(rows, {{$variable}})
+        if err != nil {
+            return nil, err
+        } 
+        count++
+    }
+    return {{$variable}}, nil
+}
+{{- end}}
+
+{{- /* First function */ -}}
+{{- define "func_first"}}
+{{- $model := title .Table.Name}}
+{{- $storage := title (print "Storage")}}  
+// First , find first {{$model}} record matching with condition specified by query and args.
+func (s *{{$storage}}) First(ctx context.Context, query string, args ...interface{}) (*{{$model}}, error) {    
+    q, ok := data.QueryableFromContext(ctx)
+    if !ok {
+        q = s.q  
+    }
+    stmt := fmt.Sprintf(`%s WHERE %s LIMIT 1`, selectQuery(), query) 
+    rows, err := q.Query(stmt, args...) 
+            
+    if err != nil {
+        return nil, err
+    }
+     
+    {{- $variable := print "r"}}
+    var {{$variable}} *{{$model}}
+    for rows.Next() {  
+        {{$variable}} = &{{$model}}{} 
+        err := scan(rows, {{$variable}})
+        if err != nil {
+            return nil, err
+        }  
+        break
+    }
+    return {{$variable}}, nil
+}
+{{- end}}
+
+{{- /* FirstOrder function */ -}}
+{{- define "func_first_order"}}
+{{- $model := title .Table.Name}}
+{{- $storage := title (print "Storage")}}  
+// FirstOrder , find first {{$model}} record matching with condition specified by query and args, and ordered.
+func (s *{{$storage}}) FirstOrder(ctx context.Context, query, order string, args ...interface{}) (*{{$model}}, error) {    
+    q, ok := data.QueryableFromContext(ctx)
+    if !ok {
+        q = s.q  
+    }
+    stmt := fmt.Sprintf(`%s WHERE %s ORDER BY %s LIMIT 1`, selectQuery(), query, order) 
+    rows, err := q.Query(stmt, args...) 
+            
+    if err != nil {
+        return nil, err
+    }
+     
+    {{- $variable := print "r"}}
+    var {{$variable}} *{{$model}}
+    for rows.Next() {  
+        {{$variable}} = &{{$model}}{} 
+        err := scan(rows, {{$variable}})
+        if err != nil {
+            return nil, err
+        }  
+        break
+    }
+    return {{$variable}}, nil
+}
+{{- end}}
+
+{{- /* Where function */ -}}
+{{- define "func_where"}}
+{{- $model := title .Table.Name}}
+{{- $storage := title (print "Storage")}}   
+// Where , find all {{$model}} records matching with condition specified by query and args.
+func (s *{{$storage}}) Where(ctx context.Context, query string, args ...interface{}) ([]*{{$model}}, error) {  
+    q, ok := data.QueryableFromContext(ctx)
+    if !ok {
+        q = s.q  
+    }
+    stmt := fmt.Sprintf(`%s WHERE (%s) AND %s`, selectQuery(), query, defaultFilter())
+    rows, err := q.Query(stmt, args...) 
+            
+    if err != nil {
+        return nil, err
+    } 
+
+    collection := []*{{$model}}{}
+    for rows.Next() { 
+        {{- $variable := print "r"}} 
+        var {{$variable}} = &{{$model}}{}
+        err := scan(rows, {{$variable}})
+        if err != nil {
+            return nil, err
+        } 
+        collection = append(collection, {{$variable}})
+    } 
+    return collection, nil 
+}
+{{- end}}
+
+{{- /* WhereOrder function */ -}}
+{{- define "func_where_order"}}
+{{- $model := title .Table.Name}}
+{{- $storage := title (print "Storage")}}   
+// WhereOrder , find all {{$model}} records matching with condition specified by query and args.
+func (s *{{$storage}}) WhereOrder(ctx context.Context, query, order string, args ...interface{}) ([]*{{$model}}, error) {  
+    q, ok := data.QueryableFromContext(ctx)
+    if !ok {
+        q = s.q  
+    }
+    stmt := fmt.Sprintf(`%s WHERE (%s) AND %s ORDER BY %s`, selectQuery(), query, defaultFilter(), order)
+    rows, err := q.Query(stmt, args...) 
+            
+    if err != nil {
+        return nil, err
+    } 
+
+    collection := []*{{$model}}{}
+    for rows.Next() { 
+        {{- $variable := print "r"}} 
+        var {{$variable}} = &{{$model}}{}
+        err := scan(rows, {{$variable}})
+        if err != nil {
+            return nil, err
+        } 
+        collection = append(collection, {{$variable}})
+    } 
+    return collection, nil 
+}
+{{- end}}
+
+{{- /* WhereNoFilter function */ -}}
+{{- define "func_where_no_filter"}}
+{{- $model := title .Table.Name}}
+{{- $storage := title (print "Storage")}}   
+// WhereNoFilter , find all {{$model}} records matching with condition specified by query and args.
+func (s *{{$storage}}) WhereNoFilter(ctx context.Context, query string, args ...interface{}) ([]*{{$model}}, error) {  
+    q, ok := data.QueryableFromContext(ctx)
+    if !ok {
+        q = s.q  
+    }
+    stmt := fmt.Sprintf(`%s WHERE %s`, selectQuery(), query)
+    rows, err := q.Query(stmt, args...) 
+            
+    if err != nil {
+        return nil, err
+    } 
+
+    collection := []*{{$model}}{}
+    for rows.Next() { 
+        {{- $variable := print "r"}} 
+        var {{$variable}} = &{{$model}}{}
+        err := scan(rows, {{$variable}})
+        if err != nil {
+            return nil, err
+        } 
+        collection = append(collection, {{$variable}})
+    } 
+    return collection, nil 
+}
+{{- end}}
+
+{{- /* FindAll function */ -}}
+{{- define "func_find_all"}}
+{{- $model := title .Table.Name}}
+{{- $storage := title (print "Storage")}}  
+// FindAll , find all {{$model}} records.
+func (s *{{$storage}}) FindAll(ctx context.Context) ([]*{{$model}}, error) { 
+    q, ok := data.QueryableFromContext(ctx)
+    if !ok {
+        q = s.q  
+    }
+    stmt := fmt.Sprintf(`%s WHERE %s`, selectQuery(), defaultFilter())
+    rows, err := q.Query(stmt) 
+            
+    if err != nil {
+        return nil, err
+    } 
+
+    collection := []*{{$model}}{}
+    for rows.Next() { 
+        {{- $variable := print "r"}} 
+        var {{$variable}} = &{{$model}}{}
+        err := scan(rows, {{$variable}})
+        if err != nil {
+            return nil, err
+        } 
+        collection = append(collection, {{$variable}})
+    } 
+    return collection, nil 
+}
+{{- end}}
+
+{{- /* FindByKeys function */ -}}
+{{- define "func_find_by_keys"}}
+{{- $model := title .Table.Name}}
+{{- $storage := title (print "Storage")}}  
+// FindByKeys , find {{$model}} using it's primary key(s).
+func (s *{{$storage}}) FindByKeys(ctx context.Context, {{template "pk_parameters" .Table}}) (*{{$model}}, error) {
+    q, ok := data.QueryableFromContext(ctx)
+    if !ok {
+        q = s.q  
+    }
+    criteria := `{{range $index, $pk := .Table.PrimaryKeys -}}
+                    {{- if $index -}} AND {{- end -}}
+                    "{{$pk.Name}}" = ${{sum $index 1 -}} 
+                 {{end}}`
+    stmt := fmt.Sprintf(`%s WHERE (%s) AND %s`, selectQuery(), criteria, defaultFilter())
+    
+    rows, err := q.Query(stmt,  {{- range $index, $pk := .Table.PrimaryKeys}}
+                                    {{- if $index}},{{end -}}
+                                    {{- printf "%v" (camel $pk.Name)}} 
+                                {{- end}})
+            
+    if err != nil {
+        return nil, err
+    }
+    
+    count := 0 
+    {{- $variable := print "r"}}
+    var {{$variable}} *{{$model}}
+    for rows.Next() { 
+        if count > 1 {
+            return nil, errors.New("found more than one record")
+        }  
+        {{$variable}} = &{{$model}}{} 
+        err := scan(rows, {{$variable}})
+        if err != nil {
+            return nil, err
+        } 
+        count++
+    }
+    return {{$variable}}, nil
+}
+{{- end}}
+
+{{- /* FindByKeysNoFilter function */ -}}
+{{- define "func_find_by_keys_no_filter"}}
+{{- $model := title .Table.Name}}
+{{- $storage := title (print "Storage")}}  
+// FindByKeysNoFilter , find {{$model}} using it's primary key(s) without filter.
+func (s *{{$storage}}) FindByKeysNoFilter(ctx context.Context, {{template "pk_parameters" .Table}}) (*{{$model}}, error) {
+    q, ok := data.QueryableFromContext(ctx)
+    if !ok {
+        q = s.q  
+    }
+    criteria := `{{range $index, $pk := .Table.PrimaryKeys -}}
+                    {{- if $index -}} AND {{- end -}}
+                    "{{$pk.Name}}" = ${{sum $index 1 -}} 
+                 {{end}}`
+    stmt := fmt.Sprintf(`%s WHERE %s`, selectQuery(), criteria)
+    
+    rows, err := q.Query(stmt,  {{- range $index, $pk := .Table.PrimaryKeys}}
+                                    {{- if $index}},{{end -}}
+                                    {{- printf "%v" (camel $pk.Name)}} 
+                                {{- end}})
+            
+    if err != nil {
+        return nil, err
+    }
+    
+    count := 0 
+    {{- $variable := print "r"}}
+    var {{$variable}} *{{$model}}
+    for rows.Next() { 
+        if count > 1 {
+            return nil, errors.New("found more than one record")
+        }  
+        {{$variable}} = &{{$model}}{} 
+        err := scan(rows, {{$variable}})
+        if err != nil {
+            return nil, err
+        } 
+        count++
+    }
+    return {{$variable}}, nil
+}
+{{- end}}
+
+{{- /* Create function */ -}}
+{{- define "func_create"}}
+{{- $model := title .Table.Name}}
+{{- $storage := title (print "Storage")}}  
+{{- $parameter := print "p"}}
+// Create , create new {{$model}} record.
+func (s *{{$storage}}) Create(ctx context.Context, {{$parameter}} *{{$model}}) error {     
+    q, ok := data.QueryableFromContext(ctx)
+    if !ok {
+        q = s.q  
+    }
+    now := time.Now().UTC()
+    {{- if .Params.fieldCreatedAt }} 
+        {{$parameter}}.{{title .Params.fieldCreatedAt}} = now
+    {{- end }}
+    {{- if .Params.fieldModifiedAt }} 
+        {{$parameter}}.{{title .Params.fieldModifiedAt}} = now
+    {{- end }} 
+
+    stmt, args := insertQuery({{$parameter}})
+    
+    row := q.QueryRow(stmt, args...) 
+
+    err := scan(row, {{$parameter}}) 
+    if err != nil {
+        return err
+    }
+    return nil
+}
+{{- end}}  
+
+{{- /* Update function */ -}}
+{{- define "func_update"}}
+{{- $model := title .Table.Name}}
+{{- $storage := title (print "Storage")}}  
+{{- $parameter := print "p"}}
+
+{{- $excludes :=printf "%v" .Params.updateExcludeFields}}
+{{- $excludes := fields (sliceString $excludes 1 (sub (len $excludes) 1))}}
+{{- $columns := (.Table.Columns.DBNames.Except .Table.PrimaryKeys.DBNames).Except $excludes }}  
+// Update , update {{$model}} record.
+func (s *{{$storage}}) Update(ctx context.Context, {{$parameter}} *{{$model}}) error {
+    q, ok := data.QueryableFromContext(ctx)
+    if !ok {
+        q = s.q
+    }
+    record, err := s.FindByKeys(ctx, 
+        {{ range $index, $col := .Table.PrimaryKeys -}} 
+            {{$parameter}}.{{title $col.Name -}}
+            {{if lt $index (len .Table.Columns) }}, {{end}}
+        {{end}}
+    )
+    if err != nil {
+        return err
+    }
+    if record == nil {
+        return errors.New("record not found")
+    }
+    
+    {{- range $index, $column := $columns }}    
+    {{ printf "record.%s = %s.%s" (title $column) $parameter (title $column)}} 
+    {{- end }}
+
+    now := time.Now().UTC()
+    {{- if .Params.fieldModifiedAt }} 
+        record.{{title .Params.fieldModifiedAt}} = now
+    {{- end }}
+
+    stmt, args := updateQuery(record) 
+    row := q.QueryRow(stmt, args...) 
+
+    err = scan(row, {{$parameter}}) 
+    if err != nil {
+        return err
+    }
+    return nil 
+} 
+{{- end -}} 
+
+
+{{- /* Delete function */ -}}
+{{- define "func_delete"}}
+{{- $model := title .Table.Name}}
+{{- $storage := title (print "Storage")}}   
+{{- if .Params.fieldDeletedAt}}
+// Delete , delete {{$model}} using it's primary key(s).
+func (s *{{$storage}}) Delete(ctx context.Context, {{template "pk_parameters" .Table}}) error { 
+    q, ok := data.QueryableFromContext(ctx)
+    if !ok {
+        q = s.q
+    }  
+
+    stmt, args := deleteQuery(  {{- range $index, $pk := .Table.PrimaryKeys}}
+                                    {{- if $index}},{{end -}}
+                                    {{- printf "%v" (camel $pk.Name)}} 
+                                {{- end}})
+    result, err := q.Exec(stmt, args...) 
+
+    if err != nil {
+        return err
+    }
+    if result != nil {
+        return nil
+    }
+    return nil 
+}
+{{end}}
+{{- end }}
+
+{{- /* Save function */ -}}
+{{- define "func_save"}}
+{{- $model := title .Table.Name}} 
+{{- $storage := "Storage"}} 
+{{- $parameter := print "p" -}}
+// Save , create new {{$model}} if it doesn't exist or update if exists.
+func (s *{{$storage}}) Save(ctx context.Context, {{$parameter}} *{{$model}}) error {
+    record, err := s.FindByKeys(ctx, 
+        {{ range $index, $col := .Table.PrimaryKeys -}} 
+            {{$parameter}}.{{title $col.Name -}}
+            {{if lt $index (len .Table.Columns) }}, {{end}}
+        {{end}}
+    )
+    if err != nil {
+        return err
+    } 
+    if record != nil {
+        return s.Update(ctx, {{$parameter}}) 
+    } 
+    return s.Create(ctx, {{$parameter}}) 
+} 
+{{- end -}}
+
+{{- /*
+template for functions that require pk parameters e.g: FindByKeys, Delete
+ex: PK1 int, PK2 string, PK3 string
+*/ -}}
+{{- define "pk_parameters"}}
+    {{- range $index, $pk := .PrimaryKeys}}
+        {{- if $index}},{{end -}}
+          {{- printf "%v %v" (camel $pk.Name) $pk.Type}} 
+    {{- end}}
+{{- end}}
+
+func fields() string {
+    return `{{join (.Table.Columns.DBNames.Sprintf `"%s"`) ", "}}`
+}
+
+func selectQuery() string {
+    return fmt.Sprintf(`SELECT %s FROM "{{.Table.Name}}"`, fields())
+} 
+
+{{- $parameter := print "p"}}
+{{- $model := title .Table.Name}} 
+{{- $excludes :=printf "%v" .Params.insertExcludeFields}}
+{{- $excludes := fields (sliceString $excludes 1 (sub (len $excludes) 1))}}
+{{- $columns := .Table.Columns.DBNames.Except $excludes }} 
+{{- $placeholders := (numbers 1 (len $columns)).Sprintf "$%s"}}
+
+func insertQuery({{$parameter}} *{{$model}}) (string, []interface{}) {
+    return fmt.Sprintf(`
+        INSERT INTO "{{.Table.Name}}" 
+            ({{join ($columns.Sprintf `"%s"`) ", "}})
+        VALUES 
+            ({{join $placeholders ", "}}) 
+        RETURNING %s`, fields()), 
+        []interface{}{
+        {{- range $index, $col := $columns -}} 
+        {{$parameter}}.{{title $col -}}
+        {{if lt $index (len $columns) }}, {{end -}}
+        {{end}}
+        }
+}
+
+{{- $parameter := print "p"}}
+{{- $model := title .Table.Name}}  
+{{- $excludes :=printf "%v" .Params.updateExcludeFields}}
+{{- $excludes := fields (sliceString $excludes 1 (sub (len $excludes) 1))}}
+{{- $columns := (.Table.Columns.DBNames.Except .Table.PrimaryKeys.DBNames).Except $excludes }}  
+{{- $params := fields (printf "%v %v" (join $columns " ") (join .Table.PrimaryKeys.Names " "))}} 
+
+func updateQuery({{$parameter}} *{{$model}}) (string, []interface{}) {
+    return fmt.Sprintf(`
+        UPDATE "{{.Table.Name}}"
+        SET 
+            {{- range $index, $column := $columns}}   
+            {{- if $index}} ,{{end}} 
+            "{{$column}}" = ${{sum $index 1 -}}  
+            {{end}}
+        WHERE 
+            {{ range $index, $pk := .Table.PrimaryKeys -}}
+            {{if $index -}} AND {{- end -}}
+            "{{$pk.Name}}" = ${{sum (len $columns) $index 1 -}} 
+            {{end}}
+        RETURNING %s`, fields()), 
+        []interface{}{
+        {{- range $index, $column := $params}}   
+            {{- if $index -}}, {{end -}} 
+            {{$parameter}}.{{title $column}}
+        {{- end -}}
+        }
+}
+
+{{- $params := fields (printf "%s %v" "now" (join .Table.PrimaryKeys.Names " "))}}
+
+{{if .Params.fieldDeletedAt}}
+func deleteQuery({{template "pk_parameters" .Table}}) (string, []interface{}) {
+    now := time.Now().UTC() 
+    return `
+        UPDATE "{{.Table.Name}}"
+        SET  
+            "{{.Params.fieldDeletedAt}}" = $1
+        WHERE 
+            {{ range $index, $pk := .Table.PrimaryKeys -}}
+            {{if $index -}} AND {{- end -}}
+            "{{$pk.Name}}" = ${{sum (len .Table.PrimaryKeys) $index 1 -}} 
+            {{end}}`, 
+        []interface{}{
+            {{- range $index, $column := $params}}   
+            {{- if $index -}}, {{end -}} 
+            {{camel $column}}
+            {{- end -}}
+        }
+} 
+{{end -}}
+
+func defaultFilter() string {
+    {{if .Params.fieldDeletedAt}}
+    return `"{{.Params.fieldDeletedAt}}" is NULL`
+    {{else}}
+    return `true`
+    {{end}}
+
+}
+
+func scan(scanner rowScanner, o *{{$model}}) error {
+    err := scanner.Scan( 
+            {{- range $index, $col := .Table.Columns -}} 
+                &o.{{title $col.Name -}}
+                {{if lt $index (len .Table.Columns) -}}, {{end -}}
+            {{end}}
+        )
+    if err != nil {
+        return err
+    } 
+    return nil
+}

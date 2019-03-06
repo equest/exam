@@ -1,0 +1,1135 @@
+{{- $repository := .Params.repository}}
+{{- $package := toLower .Table.Name}} 
+{{- $model := print $package "." (title .Table.Name)}} 
+{{- $service := "Service"}}
+{{- $storage := title (print "Storage")}}
+package {{$package}}_test    
+{{- define "import" }} 
+    {{- range $key, $value := .RefTable.ForeignKeys}}
+    {{- template "import" $value }} 
+    {{- end}}
+    "github.com/payfazz/authfazz/internal/data/{{toLower .RefTableDBName}}"
+{{- end }} 
+import( 
+	"context"
+	s "database/sql"
+	"testing" 
+   
+	queryable "{{$repository}}/internal/data"
+	"{{$repository}}/internal/data/{{$package}}"
+	"github.com/payfazz/golib/pkg/generator" 
+    "{{$repository}}/config" 
+
+    {{- if len .Table.ForeignKeys}}
+	"errors"
+    "time"  
+    {{end}}
+    {{- range $key, $value := .Table.ForeignKeys}}
+    {{- template "import" $value }}
+    {{- end}}
+
+	"github.com/bxcodec/faker" 
+	_ "github.com/lib/pq"
+) 
+
+{{- template "func_test_create" .}}
+{{- template "func_test_create_trx" .}}
+{{- template "func_test_update" .}}
+{{- template "func_test_update_trx" .}}
+{{- template "func_test_save_create" .}}
+{{- template "func_test_save_create_trx" .}}
+{{- template "func_test_save_update" .}}
+{{- template "func_test_save_update_trx" .}}
+{{- template "func_test_delete" .}}
+{{- template "func_test_delete_trx" .}}
+{{- template "func_test_single" .}}
+{{- template "func_test_first" .}}
+{{- template "func_test_first_order" .}}
+{{- template "func_test_find_all" .}}
+{{- template "func_test_find_by_keys" .}}
+{{- template "func_test_where" .}} 
+{{- template "func_test_where_order" .}} 
+{{- template "func_test_where_nofilter" .}} 
+{{- template "func_fake_model" .}} 
+{{- template "func_fake_create" .}} 
+
+
+{{- /* TestSingle function */ -}}
+{{- define "func_test_single"}}
+    {{- $package := toLower .Table.Name}} 
+    {{- $model := print $package "." (title .Table.Name)}}  
+    {{- $excludes :=printf "%v" .Params.updateExcludeFields}}
+    {{- $excludes := fields (sliceString $excludes 1 (sub (len $excludes) 1))}}
+    {{- $updateColumns := (.Table.Columns.Names.Except .Table.PrimaryKeys.Names).Except $excludes }}  
+    {{- $connection := .Params.configConnectionString}}
+func TestSingle(t *testing.T){
+    
+    target, err := fakeCreate()
+    if err != nil {
+        t.Fatalf("an error '%s' was not expected when generating fake data", err)
+    }
+
+    config, err := config.GetConfiguration();
+    if err != nil {
+		t.Fatalf("an error '%s' was not expected when getting configuration", err)
+    }
+	connectionInfo := config.{{$connection}}
+	db, err := s.Open("postgres", connectionInfo)
+    if err != nil {
+		t.Fatalf("an error '%s' was not expected when opening a stub database connection", err)
+    } 
+	defer db.Close()  
+    dbCtx:= queryable.NewContext(context.TODO(), db) 
+  
+    storage := {{$package}}.NewStorage(db) 
+    data, err := storage.Single(dbCtx, `
+        {{- range $idx, $pk := .Table.PrimaryKeys.Names -}}
+            {{- if $idx}} AND {{end -}}
+            "{{$pk}}" = ${{sum $idx 1}}
+        {{- end -}}
+        `, 
+        {{ range $index, $col := .Table.PrimaryKeys -}} 
+            target.{{title $col.Name -}}
+            {{if lt $index (len .Table.Columns) }}, {{end}}
+        {{end}})
+    if err != nil {
+		t.Fatalf("an error '%s' was not expected when finding with single method", err)
+    }
+    if data == nil {
+		t.Fatalf("undeleted data should be returned when calling Single")
+    }
+}
+{{- end}}
+
+{{- /* TestFirst function */ -}}
+{{- define "func_test_first"}}
+    {{- $package := toLower .Table.Name}} 
+    {{- $model := print $package "." (title .Table.Name)}}  
+    {{- $excludes :=printf "%v" .Params.updateExcludeFields}}
+    {{- $excludes := fields (sliceString $excludes 1 (sub (len $excludes) 1))}}
+    {{- $updateColumns := (.Table.Columns.Names.Except .Table.PrimaryKeys.Names).Except $excludes }}  
+    {{- $connection := .Params.configConnectionString}}
+func TestFirst(t *testing.T){
+    
+    target, err := fakeCreate()
+    if err != nil {
+        t.Fatalf("an error '%s' was not expected when generating fake data", err)
+    }
+
+    config, err := config.GetConfiguration();
+    if err != nil {
+		t.Fatalf("an error '%s' was not expected when getting configuration", err)
+    }
+	connectionInfo := config.{{$connection}}
+	db, err := s.Open("postgres", connectionInfo)
+    if err != nil {
+		t.Fatalf("an error '%s' was not expected when opening a stub database connection", err)
+    } 
+	defer db.Close()  
+    dbCtx:= queryable.NewContext(context.TODO(), db) 
+  
+    storage := {{$package}}.NewStorage(db) 
+    data, err := storage.First(dbCtx, `
+        {{- range $idx, $pk := .Table.PrimaryKeys.Names -}}
+            {{- if $idx}} AND {{end -}}
+            "{{$pk}}" = ${{sum $idx 1}}
+        {{- end -}}`, 
+        {{ range $index, $col := .Table.PrimaryKeys -}} 
+            target.{{title $col.Name -}}
+            {{if lt $index (len .Table.Columns) }}, {{end}}
+        {{end}})
+    if err != nil {
+		t.Fatalf("an error '%s' was not expected when finding with first method", err)
+    }
+    if data == nil {
+		t.Fatalf("undeleted data should be returned when calling First")
+    }
+}
+{{- end}}
+{{- /* TestFirstOrder function */ -}}
+{{- define "func_test_first_order"}}
+    {{- $package := toLower .Table.Name}} 
+    {{- $model := print $package "." (title .Table.Name)}}  
+    {{- $excludes :=printf "%v" .Params.updateExcludeFields}}
+    {{- $excludes := fields (sliceString $excludes 1 (sub (len $excludes) 1))}}
+    {{- $updateColumns := (.Table.Columns.Names.Except .Table.PrimaryKeys.Names).Except $excludes }}  
+    {{- $connection := .Params.configConnectionString}}
+func TestFirstOrder(t *testing.T){
+    
+    target, err := fakeCreate()
+    if err != nil {
+        t.Fatalf("an error '%s' was not expected when generating fake data", err)
+    }
+
+    config, err := config.GetConfiguration();
+    if err != nil {
+		t.Fatalf("an error '%s' was not expected when getting configuration", err)
+    }
+	connectionInfo := config.{{$connection}}
+	db, err := s.Open("postgres", connectionInfo)
+    if err != nil {
+		t.Fatalf("an error '%s' was not expected when opening a stub database connection", err)
+    } 
+	defer db.Close()  
+    dbCtx:= queryable.NewContext(context.TODO(), db) 
+  
+    storage := {{$package}}.NewStorage(db) 
+    data, err := storage.FirstOrder(dbCtx, `
+        {{- range $idx, $pk := .Table.PrimaryKeys.Names -}}
+            {{- if $idx}} AND {{end -}}
+            "{{$pk}}" = ${{sum $idx 1}}
+        {{- end -}}`,`
+        {{- range $idx, $pk := .Table.PrimaryKeys.Names -}} 
+            "{{$pk}}" asc
+        {{- end -}}`,
+        {{ range $index, $col := .Table.PrimaryKeys -}} 
+            target.{{title $col.Name -}}
+            {{if lt $index (len .Table.Columns) }}, {{end}}
+        {{end}})
+    if err != nil {
+		t.Fatalf("an error '%s' was not expected when finding with first method", err)
+    }
+    if data == nil {
+		t.Fatalf("undeleted data should be returned when calling First")
+    }
+}
+{{- end}}
+
+{{- /* TestFindByKeys function */ -}}
+{{- define "func_test_find_by_keys"}}
+    {{- $package := toLower .Table.Name}} 
+    {{- $model := print $package "." (title .Table.Name)}}  
+    {{- $excludes :=printf "%v" .Params.updateExcludeFields}}
+    {{- $excludes := fields (sliceString $excludes 1 (sub (len $excludes) 1))}}
+    {{- $updateColumns := (.Table.Columns.Names.Except .Table.PrimaryKeys.Names).Except $excludes }}  
+    {{- $connection := .Params.configConnectionString}}
+func TestFindByKeys(t *testing.T){
+    
+    target, err := fakeCreate()
+    if err != nil {
+        t.Fatalf("an error '%s' was not expected when generating fake data", err)
+    }
+
+    config, err := config.GetConfiguration();
+    if err != nil {
+		t.Fatalf("an error '%s' was not expected when getting configuration", err)
+    }
+	connectionInfo := config.{{$connection}}
+	db, err := s.Open("postgres", connectionInfo)
+    if err != nil {
+		t.Fatalf("an error '%s' was not expected when opening a stub database connection", err)
+    }  
+    dbCtx:= queryable.NewContext(context.TODO(), db) 
+  
+    storage := {{$package}}.NewStorage(db) 
+    data, err := storage.FindByKeys(dbCtx, 
+        {{ range $index, $col := .Table.PrimaryKeys -}} 
+            target.{{title $col.Name -}}
+            {{if lt $index (len .Table.Columns) }}, {{end}}
+        {{end}}
+    )
+    if err != nil {
+		t.Fatalf("an error '%s' was not expected when finding data by keys", err)
+    }
+    if data == nil {
+		t.Fatalf("undeleted data should be returned when calling FindByKeys")
+    }
+}
+{{- end}}
+
+{{- /* TestWhere function */ -}}
+{{- define "func_test_where"}}
+    {{- $package := toLower .Table.Name}} 
+    {{- $model := print $package "." (title .Table.Name)}}  
+    {{- $connection := .Params.configConnectionString}}
+func TestWhere(t *testing.T){
+    
+
+    target, err := fakeCreate()
+    if err != nil {
+        t.Fatalf("an error '%s' was not expected when generating fake data", err)
+    } 
+
+    config, err := config.GetConfiguration();
+    if err != nil {
+		t.Fatalf("an error '%s' was not expected when getting configuration", err)
+    }
+	connectionInfo := config.{{$connection}}
+	db, err := s.Open("postgres", connectionInfo)
+    if err != nil {
+		t.Fatalf("an error '%s' was not expected when opening a stub database connection", err)
+    }  
+    dbCtx:= queryable.NewContext(context.TODO(), db) 
+
+    storage := {{$package}}.NewStorage(db)
+    result, err := storage.Where(dbCtx, "{{- range $idx, $pk := .Table.PrimaryKeys.Names -}}
+        {{- if $idx}} AND {{end -}}
+        \"{{$pk}}\" = ${{sum $idx 1}}
+    {{- end -}}
+    ",{{- range $idx, $pk := .Table.PrimaryKeys.Names}}
+        {{- if $idx}},{{end -}}
+        target.{{title $pk}}
+    {{- end}})
+    if err != nil {
+		t.Fatalf("an error '%s' was not expected when querying data", err)
+    }
+    if len(result) < 1 {
+		t.Fatalf("query result expected has length greater than 0.")
+    }
+}
+{{- end}} 
+
+{{- /* TestWhereOrder function */ -}}
+{{- define "func_test_where_order"}}
+    {{- $package := toLower .Table.Name}} 
+    {{- $model := print $package "." (title .Table.Name)}}  
+    {{- $connection := .Params.configConnectionString}}
+func TestWhereOrder(t *testing.T){ 
+    target, err := fakeCreate()
+    if err != nil {
+        t.Fatalf("an error '%s' was not expected when generating fake data", err)
+    } 
+
+    config, err := config.GetConfiguration();
+    if err != nil {
+		t.Fatalf("an error '%s' was not expected when getting configuration", err)
+    }
+	connectionInfo := config.{{$connection}}
+	db, err := s.Open("postgres", connectionInfo)
+    if err != nil {
+		t.Fatalf("an error '%s' was not expected when opening a stub database connection", err)
+    }  
+    dbCtx:= queryable.NewContext(context.TODO(), db) 
+
+    storage := {{$package}}.NewStorage(db)
+    result, err := storage.WhereOrder(dbCtx, "{{- range $idx, $pk := .Table.PrimaryKeys.Names -}}
+        {{- if $idx}} AND {{end -}}
+        \"{{$pk}}\" = ${{sum $idx 1}}
+    {{- end -}}
+    ","{{- range $idx, $pk := .Table.PrimaryKeys.Names -}} 
+        \"{{$pk}}\" asc
+    {{- end -}}
+    ",{{- range $idx, $pk := .Table.PrimaryKeys.Names}}
+        {{- if $idx}},{{end -}}
+        target.{{title $pk}}
+    {{- end}})
+    if err != nil {
+		t.Fatalf("an error '%s' was not expected when querying data", err)
+    }
+    if len(result) < 1 {
+		t.Fatalf("query result expected has length greater than 0.")
+    }
+}
+{{- end}} 
+
+
+{{- /* TestWhereNoFilter function */ -}}
+{{- define "func_test_where_nofilter"}}
+    {{- $package := toLower .Table.Name}} 
+    {{- $model := print $package "." (title .Table.Name)}}  
+    {{- $connection := .Params.configConnectionString}}
+func TestWhereNoFilter(t *testing.T){
+    
+
+    target, err := fakeCreate()
+    if err != nil {
+        t.Fatalf("an error '%s' was not expected when generating fake data", err)
+    } 
+
+    config, err := config.GetConfiguration();
+    if err != nil {
+		t.Fatalf("an error '%s' was not expected when getting configuration", err)
+    }
+	connectionInfo := config.{{$connection}}
+	db, err := s.Open("postgres", connectionInfo)
+    if err != nil {
+		t.Fatalf("an error '%s' was not expected when opening a stub database connection", err)
+    }  
+    dbCtx:= queryable.NewContext(context.TODO(), db) 
+
+    storage := {{$package}}.NewStorage(db)
+    result, err := storage.WhereNoFilter(dbCtx, "{{- range $idx, $pk := .Table.PrimaryKeys.Names -}}
+        {{- if $idx}} AND {{end -}}
+        \"{{$pk}}\" = ${{sum $idx 1}}
+    {{- end -}}
+    ",{{- range $idx, $pk := .Table.PrimaryKeys.Names}}
+        {{- if $idx}},{{end -}}
+        target.{{title $pk}}
+    {{- end}})
+    if err != nil {
+		t.Fatalf("an error '%s' was not expected when querying data", err)
+    }
+    if len(result) < 1 {
+		t.Fatalf("query result expected has length greater than 0.")
+    }
+}
+{{- end}} 
+
+{{- /* TestFindAll function */ -}}
+{{- define "func_test_find_all"}}
+    {{- $package := toLower .Table.Name}} 
+    {{- $model := print $package "." (title .Table.Name)}}  
+    {{- $deletedAt := .Params.fieldDeletedAt}} 
+    {{- $connection := .Params.configConnectionString}}
+func TestFindAll(t *testing.T){
+    _, err := fakeCreate()
+    if err != nil {
+        t.Fatalf("an error '%s' was not expected when generating fake data", err)
+    } 
+
+    config, err := config.GetConfiguration();
+    if err != nil {
+		t.Fatalf("an error '%s' was not expected when getting configuration", err)
+    }
+	connectionInfo := config.{{$connection}}
+	db, err := s.Open("postgres", connectionInfo)
+    if err != nil {
+		t.Fatalf("an error '%s' was not expected when opening a stub database connection", err)
+    }  
+    dbCtx:= queryable.NewContext(context.TODO(), db) 
+
+    storage := {{$package}}.NewStorage(db)
+    result, err := storage.FindAll(dbCtx)
+    if err != nil {
+		t.Fatalf("an error '%s' was not expected when querying data", err)
+    }
+    if len(result) < 1 {
+		t.Fatalf("query result expected has length greater than 0.")
+    }
+    {{- if $deletedAt}}
+    for _, row := range result {
+        if row.{{title $deletedAt}} != nil {
+		    t.Fatalf("logically deleted data is not expected to be included in query result")
+        }
+    }
+    {{end}}
+}
+{{- end}} 
+
+{{- /* TestCreate function */ -}}
+{{- define "func_test_create"}}
+    {{- $package := toLower .Table.Name}} 
+    {{- $model := print $package "." (title .Table.Name)}}  
+    {{- $connection := .Params.configConnectionString}}
+func TestCreate(t *testing.T){
+    
+    data, err := fake{{title .Table.Name}}();
+    if err != nil {
+        t.Fatalf("an error '%s' was not expected when generating fake data, data : %+v", err, data)
+    } 
+
+    config, err := config.GetConfiguration();
+    if err != nil {
+		t.Fatalf("an error '%s' was not expected when getting configuration", err)
+    }
+	connectionInfo := config.{{$connection}}
+	db, err := s.Open("postgres", connectionInfo)
+    if err != nil {
+		t.Fatalf("an error '%s' was not expected when opening a stub database connection", err)
+    }  
+    dbCtx:= queryable.NewContext(context.TODO(), db) 
+
+    {{- range $key, $fk := .Table.FKByName}} 
+    {{- $principalStructType := title $fk.RefTableDBName}}
+    // create principal data: {{$principalStructType}}
+    principal{{$principalStructType}}, err := {{$fk.Name}}(dbCtx)
+    if err != nil{
+		t.Fatalf("an error '%s' was not expected when create data", err) 
+    } 
+    {{join ($fk.FKColumns.ColumnDBNames.Sprintf "data.%s") `, `}} = {{join ($fk.FKColumns.RefColumnDBNames.Sprintf (print "principal" $principalStructType ".%s")) `, `}}
+    {{- end}} 
+
+    storage := {{$package}}.NewStorage(db)
+    err = storage.Create(dbCtx, data)
+    if err != nil {
+		t.Fatalf("an error '%s' was not expected when create data", err)
+    }
+}
+{{- end}}
+
+{{- /* TestCreateUsingTrx function */ -}}
+{{- define "func_test_create_trx"}}
+    {{- $package := toLower .Table.Name}} 
+    {{- $model := print $package "." (title .Table.Name)}}  
+    {{- $connection := .Params.configConnectionString}}
+func TestCreateUsingTrx(t *testing.T){
+    
+    data, err := fake{{title .Table.Name}}();
+    if err != nil {
+        t.Fatalf("an error '%s' was not expected when generating fake data", err)
+    }  
+
+    config, err := config.GetConfiguration();
+    if err != nil {
+		t.Fatalf("an error '%s' was not expected when getting configuration", err)
+    }
+	connectionInfo := config.{{$connection}}
+	db, err := s.Open("postgres", connectionInfo)
+    if err != nil {
+		t.Fatalf("an error '%s' was not expected when opening a stub database connection", err)
+    }
+    tx, err := db.Begin();
+    if err != nil {
+		t.Fatalf("an error '%s' was not expected when beginning transaction", err)
+    }
+	defer db.Close() 
+    txCtx:= queryable.NewContext(context.TODO(), tx) 
+
+    {{- range $key, $fk := .Table.FKByName}} 
+    {{- $principalStructType := title $fk.RefTableDBName}} 
+    // create principal data: {{$principalStructType}}
+    principal{{$principalStructType}}, err := {{$fk.Name}}(txCtx)
+    if err != nil{
+        tx.Rollback()
+		t.Fatalf("an error '%s' was not expected when create data", err) 
+    }
+    {{join ($fk.FKColumns.ColumnDBNames.Sprintf "data.%s") `, `}} = {{join ($fk.FKColumns.RefColumnDBNames.Sprintf (print "principal" $principalStructType ".%s")) `, `}}     
+    {{- end}} 
+
+    storage := {{$package}}.NewStorage(tx)
+    err = storage.Create(txCtx, data)
+    if err != nil {
+        tx.Rollback()
+		t.Fatalf("an error '%s' was not expected when create data", err)
+    }
+    err = tx.Commit() 
+    if err != nil {
+        tx.Rollback()
+		t.Fatalf("an error '%s' was not expected when create data", err)
+    }
+    if err != nil {
+        tx.Rollback()
+		t.Fatalf("an error '%s' was not expected when committing transaction", err) 
+    } 
+}
+{{- end}}
+
+{{- /* TestUpdate function */ -}}
+{{- define "func_test_update"}}
+    {{- $package := toLower .Table.Name}} 
+    {{- $model := print $package "." (title .Table.Name)}}  
+    {{- $excludes :=printf "%v" .Params.updateExcludeFields}}
+    {{- $excludes := fields (sliceString $excludes 1 (sub (len $excludes) 1))}}
+    {{- $updateColumns := (.Table.Columns.DBNames.Except .Table.PrimaryKeys.DBNames).Except $excludes }}  
+    {{- $connection := .Params.configConnectionString}}
+func TestUpdate(t *testing.T){ 
+    target, err := fakeCreate()
+    if err != nil {
+        t.Fatalf("an error '%s' was not expected when generating fake data", err)
+    }
+    updateSource, err := fake{{title .Table.Name}}()
+    if err != nil {
+        t.Fatalf("an error '%s' was not expected when generating fake data", err)
+    } 
+
+    config, err := config.GetConfiguration();
+    if err != nil {
+		t.Fatalf("an error '%s' was not expected when getting configuration", err)
+    }
+	connectionInfo := config.{{$connection}}
+	db, err := s.Open("postgres", connectionInfo)
+    if err != nil {
+		t.Fatalf("an error '%s' was not expected when opening a stub database connection", err)
+    } 
+	defer db.Close()  
+    dbCtx:=  queryable.NewContext(context.TODO(), db)
+
+    {{- range $colKey, $column := .Table.ColumnsByName}}  
+        {{- if not $column.IsFK }}
+            {{- if gt (index (join ($updateColumns.Sprintf `:%s:`) ``) (printf `:%s:` $colKey)) -1}} 
+            target.{{title $colKey}} = updateSource.{{title $colKey}}
+            {{- end}}
+        {{- end}} 
+    {{- end}} 
+
+    storage := {{$package}}.NewStorage(db)
+    err = storage.Update(dbCtx, target)
+    if err != nil {
+		t.Fatalf("an error '%s' was not expected when updating data", err)
+    }
+}
+{{- end}} 
+
+{{- /* TestUpdateUsingTrx function */ -}}
+{{- define "func_test_update_trx"}}
+    {{- $package := toLower .Table.Name}} 
+    {{- $model := print $package "." (title .Table.Name)}}  
+    {{- $excludes :=printf "%v" .Params.updateExcludeFields}}
+    {{- $excludes := fields (sliceString $excludes 1 (sub (len $excludes) 1))}}
+    {{- $updateColumns := (.Table.Columns.Names.Except .Table.PrimaryKeys.Names).Except $excludes }}  
+    {{- $connection := .Params.configConnectionString}}
+func TestUpdateUsingTrx(t *testing.T){
+    
+    target, err := fakeCreate()
+    if err != nil {
+        t.Fatalf("an error '%s' was not expected when generating fake data", err)
+    }
+    updateSource, err := fake{{title .Table.Name}}()
+    if err != nil {
+        t.Fatalf("an error '%s' was not expected when generating fake data", err)
+    } 
+
+    config, err := config.GetConfiguration();
+    if err != nil {
+		t.Fatalf("an error '%s' was not expected when getting configuration", err)
+    }
+	connectionInfo := config.{{$connection}}
+	db, err := s.Open("postgres", connectionInfo)
+    if err != nil {
+		t.Fatalf("an error '%s' was not expected when opening a stub database connection", err)
+    }
+    tx, err := db.Begin();
+    if err != nil {
+		t.Fatalf("an error '%s' was not expected when beginning transaction", err)
+    }
+	defer db.Close() 
+    txCtx:=  queryable.NewContext(context.TODO(), tx)
+
+    {{- range $colKey, $column := .Table.ColumnsByName}}  
+        {{- if not $column.IsFK }}
+            {{- if gt (index (join ($updateColumns.Sprintf `:%s:`) ``) (printf `:%s:` $colKey)) -1}} 
+            target.{{title $colKey}} = updateSource.{{title $colKey}}
+            {{- end}}
+        {{- end}} 
+    {{- end}} 
+
+    storage := {{$package}}.NewStorage(tx)
+    err = storage.Update(txCtx, target)
+    if err != nil {
+		t.Fatalf("an error '%s' was not expected when updating data", err)
+    }
+    err = tx.Commit()
+    if err != nil {
+        tx.Rollback()
+		t.Fatalf("an error '%s' was not expected when committing transaction", err) 
+    } 
+}
+{{- end}}
+
+{{- /* TestSaveCreate function */ -}} 
+{{- define "func_test_save_create"}}
+    {{- $package := toLower .Table.Name}} 
+    {{- $model := print $package "." (title .Table.Name)}}  
+    {{- $connection := .Params.configConnectionString}}
+func TestSaveCreate(t *testing.T){ 
+    data, err := fake{{title .Table.Name}}();
+    if err != nil {
+        t.Fatalf("an error '%s' was not expected when generating fake data", err)
+    } 
+
+    config, err := config.GetConfiguration();
+    if err != nil {
+		t.Fatalf("an error '%s' was not expected when getting configuration", err)
+    }
+	connectionInfo := config.{{$connection}}
+	db, err := s.Open("postgres", connectionInfo)
+    if err != nil {
+		t.Fatalf("an error '%s' was not expected when opening a stub database connection", err)
+    }
+    
+	defer db.Close()  
+    dbCtx:= queryable.NewContext(context.TODO(), db)
+
+    {{- range $key, $fk := .Table.FKByName}} 
+    {{- $principalStructType := title $fk.RefTableDBName}} 
+    // create principal data: {{$principalStructType}}
+    principal{{$principalStructType}}, err := {{$fk.Name}}(dbCtx)
+    if err != nil{
+		t.Fatalf("an error '%s' was not expected when create data", err) 
+    }
+    {{join ($fk.FKColumns.ColumnDBNames.Sprintf "data.%s") `, `}} = {{join ($fk.FKColumns.RefColumnDBNames.Sprintf (print "principal" $principalStructType ".%s")) `, `}}   
+    {{- end}} 
+
+    storage := {{$package}}.NewStorage(db)
+    err = storage.Save(dbCtx, data)
+    if err != nil {
+		t.Fatalf("an error '%s' was not expected when create data", err)
+    }
+}
+{{- end}} 
+{{- /* TestSaveCreateUsingTrx function */ -}}
+{{- define "func_test_save_create_trx"}}
+    {{- $package := toLower .Table.Name}} 
+    {{- $model := print $package "." (title .Table.Name)}}  
+    {{- $connection := .Params.configConnectionString}}
+func TestSaveCreateUsingTrx(t *testing.T){
+    
+    data, err := fake{{title .Table.Name}}();
+    if err != nil {
+        t.Fatalf("an error '%s' was not expected when generating fake data", err)
+    }  
+
+    config, err := config.GetConfiguration();
+    if err != nil {
+		t.Fatalf("an error '%s' was not expected when getting configuration", err)
+    }
+	connectionInfo := config.{{$connection}}
+	db, err := s.Open("postgres", connectionInfo)
+    if err != nil {
+		t.Fatalf("an error '%s' was not expected when opening a stub database connection", err)
+    }
+    tx, err := db.Begin();
+    if err != nil {
+		t.Fatalf("an error '%s' was not expected when beginning transaction", err)
+    }
+	defer db.Close() 
+    txCtx:= queryable.NewContext(context.TODO(), tx) 
+
+    {{- range $key, $fk := .Table.FKByName}} 
+    {{- $principalStructType := title $fk.RefTableDBName}} 
+    // create principal data: {{$principalStructType}}
+    principal{{$principalStructType}}, err := {{$fk.Name}}(txCtx)
+    if err != nil{
+        tx.Rollback()
+		t.Fatalf("an error '%s' was not expected when create data", err) 
+    }
+    {{join ($fk.FKColumns.ColumnDBNames.Sprintf "data.%s") `, `}} = {{join ($fk.FKColumns.RefColumnDBNames.Sprintf (print "principal" $principalStructType ".%s")) `, `}}
+    {{- end}} 
+
+    storage := {{$package}}.NewStorage(tx)
+    err = storage.Save(txCtx, data) 
+    if err != nil {
+        tx.Rollback()
+		t.Fatalf("an error '%s' was not expected when save data", err)
+    }
+    err = tx.Commit() 
+    if err != nil {
+        tx.Rollback()
+		t.Fatalf("an error '%s' was not expected when saving data", err)
+    }
+    if err != nil {
+        tx.Rollback()
+		t.Fatalf("an error '%s' was not expected when committing transaction", err) 
+    } 
+}
+{{- end}}
+
+{{- /* TestSaveUpdate function */ -}}
+{{- define "func_test_save_update"}}
+    {{- $package := toLower .Table.Name}} 
+    {{- $model := print $package "." (title .Table.Name)}}  
+    {{- $excludes :=printf "%v" .Params.updateExcludeFields}}
+    {{- $excludes := fields (sliceString $excludes 1 (sub (len $excludes) 1))}}
+    {{- $updateColumns := (.Table.Columns.DBNames.Except .Table.PrimaryKeys.DBNames).Except $excludes }}  
+    {{- $connection := .Params.configConnectionString}}
+func TestSaveUpdate(t *testing.T){
+    target, err := fakeCreate()
+    if err != nil {
+        t.Fatalf("an error '%s' was not expected when generating fake data", err)
+    }
+    updateSource, err := fake{{title .Table.Name}}()
+    if err != nil {
+        t.Fatalf("an error '%s' was not expected when generating fake data", err)
+    } 
+
+    config, err := config.GetConfiguration();
+    if err != nil {
+		t.Fatalf("an error '%s' was not expected when getting configuration", err)
+    }
+	connectionInfo := config.{{$connection}}
+	db, err := s.Open("postgres", connectionInfo)
+    if err != nil {
+		t.Fatalf("an error '%s' was not expected when opening a stub database connection", err)
+    }
+    
+	defer db.Close()  
+    dbCtx:= queryable.NewContext(context.TODO(), db) 
+
+    {{- range $colKey, $column := .Table.ColumnsByName}}  
+        {{- if not $column.IsFK }}
+            {{- if gt (index (join ($updateColumns.Sprintf `:%s:`) ``) (printf `:%s:` $colKey)) -1}} 
+            target.{{title $colKey}} = updateSource.{{title $colKey}}
+            {{- end}}
+        {{- end}} 
+    {{- end}} 
+
+    storage := {{$package}}.NewStorage(db)
+    err = storage.Save(dbCtx, target)
+    if err != nil {
+		t.Fatalf("an error '%s' was not expected when saving data", err)
+    }
+}
+{{- end}} 
+
+{{- /* TestSaveUpdateUsingTrx function */ -}}
+{{- define "func_test_save_update_trx"}}
+    {{- $package := toLower .Table.Name}} 
+    {{- $model := print $package "." (title .Table.Name)}}  
+    {{- $excludes :=printf "%v" .Params.updateExcludeFields}}
+    {{- $excludes := fields (sliceString $excludes 1 (sub (len $excludes) 1))}}
+    {{- $updateColumns := (.Table.Columns.Names.Except .Table.PrimaryKeys.Names).Except $excludes }}  
+    {{- $connection := .Params.configConnectionString}}
+func TestSaveUpdateUsingTrx(t *testing.T){
+    
+    target, err := fakeCreate()
+    if err != nil {
+        t.Fatalf("an error '%s' was not expected when generating fake data", err)
+    }
+    updateSource, err := fake{{title .Table.Name}}()
+    if err != nil {
+        t.Fatalf("an error '%s' was not expected when generating fake data", err)
+    } 
+
+    config, err := config.GetConfiguration();
+    if err != nil {
+		t.Fatalf("an error '%s' was not expected when getting configuration", err)
+    }
+	connectionInfo := config.{{$connection}}
+	db, err := s.Open("postgres", connectionInfo)
+    if err != nil {
+		t.Fatalf("an error '%s' was not expected when opening a stub database connection", err)
+    }
+    tx, err := db.Begin();
+    if err != nil {
+		t.Fatalf("an error '%s' was not expected when beginning transaction", err)
+    }
+	defer db.Close() 
+    txCtx:= queryable.NewContext(context.TODO(), tx) 
+
+    {{- range $colKey, $column := .Table.ColumnsByName}}  
+        {{- if not $column.IsFK }}
+            {{- if gt (index (join ($updateColumns.Sprintf `:%s:`) ``) (printf `:%s:` $colKey)) -1}} 
+            target.{{title $colKey}} = updateSource.{{title $colKey}}
+            {{- end}}
+        {{- end}} 
+    {{- end}} 
+
+    storage := {{$package}}.NewStorage(tx)
+    err = storage.Save(txCtx, target)
+    if err != nil {
+		tx.Rollback()
+		t.Fatalf("an error '%s' was not expected when saving data", err)
+    }
+    err = tx.Commit()
+    if err != nil {
+        tx.Rollback()
+		t.Fatalf("an error '%s' was not expected when committing transaction", err) 
+    } 
+}
+{{- end}}
+
+{{- /* TestDelete function */ -}}
+{{- define "func_test_delete"}}
+    {{- $package := toLower .Table.Name}} 
+    {{- $model := print $package "." (title .Table.Name)}}   
+    {{- $deletedAt := .Params.fieldDeletedAt}}
+    {{- $connection := .Params.configConnectionString}}
+    {{- if $deletedAt}}
+func TestDelete(t *testing.T){
+    target, err := fakeCreate()
+    if err != nil {
+        t.Fatalf("an error '%s' was not expected when generating fake data", err)
+    } 
+
+    config, err := config.GetConfiguration();
+    if err != nil {
+		t.Fatalf("an error '%s' was not expected when getting configuration", err)
+    }
+	connectionInfo := config.{{$connection}}
+	db, err := s.Open("postgres", connectionInfo)
+    if err != nil {
+		t.Fatalf("an error '%s' was not expected when opening a stub database connection", err)
+    } 
+	defer db.Close()  
+    dbCtx:= queryable.NewContext(context.TODO(), db) 
+
+    storage := {{$package}}.NewStorage(db)
+    err = storage.Delete(dbCtx, 
+        {{ range $index, $col := .Table.PrimaryKeys -}} 
+            target.{{title $col.Name -}}
+            {{if lt $index (len .Table.Columns) }}, {{end}}
+        {{end}}
+    )
+    if err != nil {
+		t.Fatalf("an error '%s' was not expected when deleting data", err)
+    }
+
+    deletedData, err := storage.FindByKeys(dbCtx, 
+        {{ range $index, $col := .Table.PrimaryKeys -}} 
+            target.{{title $col.Name -}}
+            {{if lt $index (len .Table.Columns) }}, {{end}}
+        {{end}}
+    )
+    if err != nil {
+		t.Fatalf("an error '%s' was not expected when finding deleted data", err)
+    }
+    if deletedData != nil {
+		t.Fatalf("deleted data should not be returned when calling FindByKeys")
+    }
+
+    deletedData, err = storage.FindByKeysNoFilter(dbCtx, 
+        {{ range $index, $col := .Table.PrimaryKeys -}} 
+            target.{{title $col.Name -}}
+            {{if lt $index (len .Table.Columns) }}, {{end}}
+        {{end}}
+    )
+    if deletedData == nil {
+		t.Fatalf("deleted data should be returned when calling FindByKeysNoFilter")
+    } 
+    if deletedData.{{title $deletedAt}} == nil {
+		t.Fatalf("deleted data should have valid '{{title $deletedAt}}' value")
+    }
+}
+    {{end}}     
+{{- end}} 
+{{- /* TestDeleteUsingTrx function */ -}}
+{{- define "func_test_delete_trx"}}
+    {{- $package := toLower .Table.Name}} 
+    {{- $model := print $package "." (title .Table.Name)}}   
+    {{- $deletedAt := .Params.fieldDeletedAt}}
+    {{- $connection := .Params.configConnectionString}}
+
+    {{- if $deletedAt}}
+func TestDeleteUsingTrx(t *testing.T){ 
+    target, err := fakeCreate()
+    if err != nil {
+        t.Fatalf("an error '%s' was not expected when generating fake data", err)
+    } 
+
+    config, err := config.GetConfiguration();
+    if err != nil {
+		t.Fatalf("an error '%s' was not expected when getting configuration", err)
+    }
+	connectionInfo := config.{{$connection}}
+	db, err := s.Open("postgres", connectionInfo)
+    if err != nil {
+		t.Fatalf("an error '%s' was not expected when opening a stub database connection", err)
+    }
+    tx, err := db.Begin();
+    if err != nil {
+		t.Fatalf("an error '%s' was not expected when beginning transaction", err)
+    }
+	defer db.Close() 
+    txCtx:= queryable.NewContext(context.TODO(), tx)
+    dbCtx:= queryable.NewContext(context.TODO(), db) 
+
+    storage := {{$package}}.NewStorage(tx)
+    err = storage.Delete(txCtx,
+        {{ range $index, $col := .Table.PrimaryKeys -}} 
+            target.{{title $col.Name -}}
+            {{if lt $index (len .Table.Columns) }}, {{end}}
+        {{end}}
+    )
+    if err != nil {
+		t.Fatalf("an error '%s' was not expected when deleting data", err)
+    }
+    err = tx.Commit()
+    if err != nil {
+        tx.Rollback()
+		t.Fatalf("an error '%s' was not expected when committing transaction", err) 
+    } 
+    storage = {{$package}}.NewStorage(db)
+    deletedData, err := storage.FindByKeys(dbCtx, 
+    {{ range $index, $col := .Table.PrimaryKeys -}} 
+        target.{{title $col.Name -}}
+        {{if lt $index (len .Table.Columns) }}, {{end}}
+    {{end}}
+    )
+    if err != nil {
+		t.Fatalf("an error '%s' was not expected when finding deleted data", err)
+    }
+    if deletedData != nil {
+		t.Fatalf("deleted data should not be returned when calling FindByKeys")
+    }
+
+    deletedData, err = storage.FindByKeysNoFilter(dbCtx, 
+        {{ range $index, $col := .Table.PrimaryKeys -}} 
+            target.{{title $col.Name -}}
+            {{if lt $index (len .Table.Columns) }}, {{end}}
+        {{end}}
+    )
+    if deletedData == nil {
+		t.Fatalf("deleted data should be returned when calling FindByKeysNoFilter")
+    } 
+    if deletedData.{{title $deletedAt}} == nil {
+		t.Fatalf("deleted data should have valid '{{title $deletedAt}}' value")
+    }
+}
+    {{end}} 
+{{- end}} 
+
+{{- /* fakeCreate function */ -}}
+{{- define "func_fake_create"}}
+    {{- $package := toLower .Table.Name}} 
+    {{- $model := print $package "." (title .Table.Name)}}  
+    {{- $connection := .Params.configConnectionString}}
+// fakeCreate , create fake data used to simplify data creation on test functions.
+func fakeCreate() (*{{$model}}, error) {
+    
+    data, err := fake{{title .Table.Name}}();
+    if err != nil {
+        return nil, err
+    } 
+    config, err := config.GetConfiguration();
+    if err != nil {
+        return nil, err
+    }
+	connectionInfo := config.{{$connection}}
+	db, err := s.Open("postgres", connectionInfo)
+    if err != nil {
+        return nil, err
+    }
+    tx, err := db.Begin();
+    if err != nil {
+        return nil, err
+    }
+	defer db.Close()
+    txCtx:= queryable.NewContext(context.TODO(), tx)
+
+    {{- range $key, $fk := .Table.FKByName}} 
+    {{- $principalStructType := title $fk.RefTableDBName}} 
+    // create principal data: {{$principalStructType}}
+    principal{{$principalStructType}}, err := {{$fk.Name}}(txCtx)
+    if err != nil {
+        tx.Rollback()
+        return nil, err
+    }
+    {{join ($fk.FKColumns.ColumnDBNames.Sprintf "data.%s") `, `}} = {{join ($fk.FKColumns.RefColumnDBNames.Sprintf (print "principal" $principalStructType ".%s")) `, `}}     
+    {{- end}} 
+
+    storage := {{$package}}.NewStorage(tx)
+    err = storage.Create(txCtx, data)
+    if err != nil {
+        tx.Rollback() 
+        return nil, err
+    }
+    err = tx.Commit()  
+    if err != nil {
+        tx.Rollback()
+        return nil, err
+    } 
+    return data, nil
+}
+{{- end}}
+
+{{- /* fakeModel function */ -}}
+{{- define "func_fake_model"}}
+{{- $package := toLower .Table.Name}} 
+{{- $model := print $package "." (title .Table.Name)}}  
+func fake{{title .Table.Name}}() (*{{$model}}, error){
+    fake := &{{$model}}{};  
+    {{- template "hack_faker" .Table}}
+    fake.ID = 0
+    return fake, nil
+}
+{{- end}}
+ 
+{{- define "func_fake_fk"}}
+{{- $tableData := .tableData}}
+{{- $foreignKey := .fk}}
+{{- range $key, $fk := $foreignKey.RefTable.ForeignKeys}} 
+    {{$map := makeMap "tableData" $tableData  "fk" $fk}}
+    {{- template "func_fake_fk" $map}} 
+{{- end}} 
+{{- $principalTable := $foreignKey.RefTable}}
+{{- $principalTableName := $principalTable.Name}}
+{{- $principalStructType := (title $principalTableName)}}
+{{- $principalPackageName := (toLower $principalTableName)}}
+
+{{- $excludeParams := $tableData.Params.insertExcludeFields}}
+{{- $excludes :=printf "%v" $excludeParams}}
+{{- $insertExcludedFields := fields (sliceString $excludes 1 (sub (len $excludes) 1))}}
+{{- $insertColumns := $principalTable.Columns.DBNames.Except $insertExcludedFields }} 
+{{- $placeholders := (numbers 1 (len $insertColumns)).Sprintf "$%s" -}}
+{{- $selectStatement := join ($principalTable.Columns.DBNames.Sprintf `"%s"`) ", "}}
+
+func {{$foreignKey.Name}} (ctx context.Context) (*{{$principalPackageName}}.{{$principalStructType}}, error){
+    queryable, queryableOK := queryable.QueryableFromContext(ctx)
+    if !queryableOK {
+        return nil, errors.New("failed to get queryable from context")
+    } 
+
+    fake := &{{$principalPackageName}}.{{$principalStructType}}{}; 
+    {{- template "hack_faker" $principalTable}} 
+
+    {{- if or .Params.fieldCreatedAt .Params.fieldModifiedAt }} 
+    utcNow := time.Now().UTC() 
+    {{- end}}
+    {{- if .Params.fieldCreatedAt }} 
+        fake.{{.Params.fieldCreatedAt}} = utcNow
+    {{- end }}
+    {{- if .Params.fieldModifiedAt }} 
+        fake.{{.Params.fieldModifiedAt}} = utcNow
+    {{- end }}  
+
+    {{- range $innerKey, $innerFk := $principalTable.FKByName}} 
+    {{- $innerPrincipalStructType := title $innerFk.RefTableDBName}}
+    {{- $innerPrincipalVariable := toLower $innerPrincipalStructType}} 
+    // create principal data: {{$innerPrincipalStructType}}
+    {{$innerPrincipalVariable}}, errFake{{$innerPrincipalStructType}} := {{$innerFk.Name}}(ctx)
+    if errFake{{$innerPrincipalStructType}} != nil { 
+        return nil, errFake{{$innerPrincipalStructType}}
+    }
+    {{join ($innerFk.FKColumns.ColumnDBNames.Sprintf "fake.%s") `, `}} = {{join ($innerFk.FKColumns.RefColumnDBNames.Sprintf (print $innerPrincipalVariable ".%s")) `, `}}
+    {{- end}} 
+    
+    row := queryable.QueryRow(`INSERT INTO "{{$principalTableName}}" 
+    ({{join ($insertColumns.Sprintf `"%s"`) ", "}})
+    VALUES 
+    ({{join $placeholders ", "}}) 
+    RETURNING
+    {{$selectStatement}}`,  
+    {{join ($insertColumns.Sprintf (print `fake.%s`)) ", "}})
+ 
+    // data := &{{$principalStructType}}{}
+    scanError := row.Scan({{join ($principalTable.Columns.Names.Sprintf (print `&` `fake.%s`)) ", "}})
+    if scanError != nil {
+        return nil, scanError
+    }
+    return fake, nil
+}
+{{- end}}
+
+{{- with .}}
+{{$tableData := .}}
+{{- range $key, $fk := .Table.ForeignKeys}}  
+    {{$map := makeMap "tableData" $tableData  "fk" $fk}}
+    {{- template "func_fake_fk" $map}} 
+{{- end}}  
+{{- end}}
+
+{{- define "hack_faker"}}
+    {{- range $i, $col := .Columns}}
+        {{- if eq $col.DBType "bigint"}}
+rand{{title $col.Name}},_ := generator.RandomNumericString(12)
+irand{{title $col.Name}},_ := strconv.ParseUint(rand{{title $col.Name}},10,64)
+fake.{{title $col.Name}} = {{if $col.Nullable}}&{{end}}irand{{title $col.Name}}
+        {{- end}}
+        {{- if eq $col.DBType "jsonb"}}
+json{{title $col.Name}} := "{}"
+fake.{{title $col.Name}} = {{if $col.Nullable}}&{{end}}json{{title $col.Name}} 
+        {{- end}}
+        {{- if and (or (eq $col.DBType "character varying") (eq $col.DBType "text"))}}
+            {{- if gt $col.Length 0 }}
+                rand{{title $col.Name}},_ := generator.RandomStringSet({{$col.Length}},"abcdefghijklmnopqrstuvwxyz")
+            {{- else }}
+                rand{{title $col.Name}},_ := generator.RandomStringSet(16,"abcdefghijklmnopqrstuvwxyz")
+            {{- end}}
+            {{- if $col.IsArray }}
+                fake.{{title $col.Name}} = {{if $col.Nullable}}&{{end}}[]string{rand{{title $col.Name}}}
+            {{- else }}
+                fake.{{title $col.Name}} = {{if $col.Nullable}}&{{end}}rand{{title $col.Name}}
+            {{- end}}
+        {{- end}}
+        {{- if eq $col.Type "time.Time"}} 
+fake.{{title $col.Name}} = time.Now()   
+        {{- end}}
+        {{- if eq $col.Type "*time.Time"}}
+now{{title $col.Name}} := time.Now()
+fake.{{title $col.Name}} = &now{{title $col.Name}}
+        {{- end}}
+    {{- end}}
+{{- end}}
+
+{{- define "random"}}   
+rand
+    {{- range $column := .Columns}} 
+        {{if gt $column.Length 0}} 
+        fake.{{title $column.Name}},_ = generator.RandomStringSet({{$column.Length}},"abcdefghijklmnopqrstuvwxyz")
+        {{- end}}
+        {{if eq $column.Type "uint64"}} 
+        rand{{title $column.Name}},_ := generator.RandomNumericString(12)
+        fake.{{title $column.Name}},_ = strconv.ParseUint(rand{{title $column.Name}},10,64)
+        {{- end}}
+    {{- end}}
+{{- end}}
